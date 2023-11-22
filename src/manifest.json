@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Y! shopping order history",
+  "version": "1.0",
+  "description": "get order list from Yahoo Shopping site as cvs",
+
+  "icons": {
+    "16": "images/icon-16.png",
+    "32": "images/icon-32.png",
+    "48": "images/icon-48.png",
+    "128": "images/icon-128.png"
+  },
+  "content_scripts": [
+    {
+      "js": [
+        "scripts/utils.js",
+        "scripts/page-list.js",
+        "scripts/page-details.js",
+        "scripts/main.js"
+      ],
+      "matches": [
+        "https://odhistory.shopping.yahoo.co.jp/order-history/*"
+      ]
+    }
+  ]
+}
