@@ -8,7 +8,7 @@
 function getFirstChildOfClassElement(searchElement, className) {
   const elm = searchElement.getElementsByClassName(className);
   for (let j = 0; j < elm.length; j++) {
-    if (!elm[j].children || elm[j].children.length < 0)
+    if (!elm[j].children || elm[j].children.length <= 0)
       return null;
 
     return elm[j].children[0];
