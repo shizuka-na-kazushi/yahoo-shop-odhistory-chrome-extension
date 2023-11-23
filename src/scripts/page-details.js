@@ -1,8 +1,4 @@
 
-function check1() {
-  console.log("check1() is called...");
-}
-
 /**
  * @typedef yhDetails
  * @property {string} orderDate
@@ -59,6 +55,8 @@ function handleElOrderDate(details, elOrderDate) {
     let date = elDetails[0].children[0].innerHTML;
     date = date.split(" ")[0];
     details.orderDate = date;
+  } else {
+    details.orderDate = "";
   }
 }
 
@@ -106,8 +104,6 @@ function handleMdOrderItem(details, shpMain) {
  * @param {HTMLElement} elDetail 
  */
 function handleMdOrderDetail(details, elDetail) {
-  console.log("handleMdOrderDetail()");
-
   /** @type {yhDetailsOrderItem} */
   let item = {};
 
@@ -122,6 +118,8 @@ function handleMdOrderDetail(details, elDetail) {
   item.productUrl = nameInfo.url;
   if (anchorName && anchorName.children && 0 < anchorName.children.length) {
     item.name = anchorName.children[0].innerHTML;
+  } else {
+    item.name = "";
   }
 
   // price
@@ -149,6 +147,8 @@ function handleMdOrderDetailInfo(item, elDetail) {
     price = price.replace("円", "");
     price = price.replaceAll(",", "");
     item.price = parseInt(price);
+  } else {
+    item.price = 0;
   }
 
   const elNums = elInfos[0].getElementsByClassName("elNum");
@@ -157,11 +157,15 @@ function handleMdOrderDetailInfo(item, elDetail) {
     let num = elNums[0].innerHTML;
     num = num.replace(/[^0-9]/g, '');
     item.num = parseInt(num);
+  } else {
+    item.num = 0;
   }
 
   const elShipDatas = elInfos[0].getElementsByClassName("elShipData");
   if (elShipDatas && 0 < elShipDatas.length) {
     item.shipData = elShipDatas[0].innerHTML;
+  } else {
+    item.shipData = "";
   }
 }
 
@@ -194,6 +198,8 @@ function handleBill(details, elBill) {
   const el = getFirstChildOfClassElement(elBill, "elName");
   if (el) {
     details.billName = el.innerHTML;
+  } else {
+    details.billName = "";
   }
 }
 
@@ -216,15 +222,6 @@ function handleShpMain(d) {
   handleMdOrderItem(details, d);
   handleMdOrderAddress(details, d);
 
-  console.log(JSON.stringify(details, null, " "));
-
-  let total = 0;
-  details.orderList.map((item) => {
-    total += (item.price * item.num);
-  })
-
-  console.log("total price: " + total);
-
   return details;
 }
 
@@ -236,7 +233,17 @@ function createCheckButton() {
     const button = d.createElement("button");
     button.innerText = "run";
     button.addEventListener("click", () => {
-      handleShpMain(d);
+
+      const details = handleShpMain(d);
+
+      console.log(JSON.stringify(details, null, " "));
+
+      let total = 0;
+      details.orderList.map((item) => {
+        total += (item.price * item.num);
+      })
+    
+      console.log("total price: " + total);
     })
 
     elTitle[0].appendChild(button);

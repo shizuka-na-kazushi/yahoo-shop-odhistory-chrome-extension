@@ -2,19 +2,24 @@
 const idForOutputBox = "yh-extension-output-box";
 const idForDialog = "hy-extension-dialog";
 const zIndexForDialog = 999;
-const callingNextPageInterval = 500; // in millisecond
+const callingNextPageInterval = 300; // in millisecond
+const callingDetailsPageInterval = 150; // in millisecond
 
-/**
- * @typedef YhProductInfo 
- * @property {string} title
- * @property {string} price 
- * @property {string} url
- */
+const debugStopNextPage = false;
+
+const detailsUrl = "https://odhistory.shopping.yahoo.co.jp/order-history/details";
 
 /**  
- * @callback YhWriteOneOrderCallback
+ * @callback YhWriteLinesCallback
  * @param {YhParseContext} context
  * @returns 
+ */
+
+/**
+ * @typedef YhDetailButtonForm
+ * @property {string} listCatalog
+ * @property {string} catalog
+ * @property {string} oid
  */
 
 /**
@@ -23,8 +28,10 @@ const callingNextPageInterval = 500; // in millisecond
  * @property {string} storeName
  * @property {string} currentStatus
  * @property {string} orderNumber
- * @property {YhProductInfo} productInfo
- * @property {YhWriteOneOrderCallback} writeOneOrder
+ * @property {YhDetailButtonForm} buttonForm
+ * @property {yhDetails} details
+ * @property {YhWriteLinesCallback} writeLines
+ * @property {boolean} processing
  */
 
 
@@ -68,28 +75,6 @@ function handleTitleInfo(context, elProductInfo) {
 /**
  * @param {YhParseContext} context
  * @param {HTMLElement} elItemList 
- * @returns {boolean}
- */
-function handleProductInfos(context, elItemList) {
-  const elProductInfos = elItemList.getElementsByClassName("elProductInfo");
-
-  for (let i = 0; i < elProductInfos.length; i++) {
-    const elPrice = getFirstChildOfClassElement(elProductInfos[i], "elPrice");
-    // getTitleInfo may create productInfo property on context.
-    // Then, let's set the price to it.
-    if (elPrice && handleTitleInfo(context, elProductInfos[i])) {
-      let price = elPrice.innerHTML;
-      price = price.replace("円", "");
-      price = price.replaceAll(",", "");
-      context.productInfo.price = price;
-      writeOneLine(context);
-    }
-  }
-}
-
-/**
- * @param {YhParseContext} context
- * @param {HTMLElement} elItemList 
  */
 function handleStoreInfo(context, elItemList) {
   const elStoreInfo = elItemList.getElementsByClassName("elStoreInfo");
@@ -124,20 +109,56 @@ function handleOrderNumber(context, elItemList) {
 
 /**
  * @param {YhParseContext} context
- * @param {HTMLElement} elOrderItem 
- * @returns {boolean}
+ * @param {HTMLElement} elItemList 
  */
-function handleItems(context, elOrderItem) {
+function handleControl(context, elItemList) {
+  const elControls = elItemList.getElementsByClassName("elControl");
+  if (elControls && 0 < elControls.length) {
+    let forms = elControls[0].getElementsByTagName("form");
+    if (forms && 0 < forms.length) {
+
+      /** @type {YhDetailButtonForm} */
+      let obj = {};
+      const a = getInputInfos(forms[0]);
+      a.forEach((i) => {
+        if (i.name == "list-catalog") {
+          obj.listCatalog = i.value;
+        } else if (i.name == "catalog") {
+          obj.catalog = i.value;
+        } else if (i.name == "oid") {
+          obj.oid = i.value;
+        }
+      })
+      context.buttonForm = obj;
+    }
+  }
+}
+
+/**
+ * @param {YhParseContext} context
+ * @param {HTMLElement} elOrderItem 
+ * @returns {Promise<boolean>}
+ */
+async function handleItems(context, elOrderItem) {
+
+  let result = true;
   const elItems = elOrderItem.getElementsByClassName("elItem");
-  for (let i = 0; i < elItems.length; i++) {
+  for (let i = 0; i < elItems.length && result; i++) {
     const elItemList = elItems[i].getElementsByClassName("elItemList");
-    for (let x = 0; x < elItemList.length; x++) {
+    for (let x = 0; x < elItemList.length && result; x++) {
       handleCurrentStatus(context, elItemList[x]);
       handleStoreInfo(context, elItemList[x]);
       handleOrderNumber(context, elItemList[x]);
-      handleProductInfos(context, elItemList[x]);
+      handleControl(context, elItemList[x]);
+      context.details = await fetchDetails(context.buttonForm);
+      context.writeLines(context);
+      if (!context.processing) {
+        result = false;
+        console.warn("process aborted, while fetchDetails()!");
+      }
     }
   }
+  return Promise.resolve(result);
 }
 
 /**
@@ -145,23 +166,56 @@ function handleItems(context, elOrderItem) {
  * @param {HTMLElement} ordHistory 
  * @returns {boolean}
  */
-function handleOrderItem(context, ordHistory) {
+async function handleOrderItem(context, ordHistory) {
+
+  let result = true;
   const elOrderItems = ordHistory.getElementsByClassName("elOrderItem");
-  for (let i = 0; i < elOrderItems.length; i++) {
+  for (let i = 0; i < elOrderItems.length && result; i++) {
     handleOrderDate(context, elOrderItems[i]);
-    handleItems(context, elOrderItems[i]);
+    result = await handleItems(context, elOrderItems[i]);
   };
+
+  return Promise.resolve(result);
+}
+
+/**
+ * 
+ * @param {YhDetailButtonForm} bf
+ * @returns {Promise<yhDetails|null>} 
+ */
+async function fetchDetails(bf) {
+
+  await waitForSometime(callingDetailsPageInterval);
+
+  try {
+    let body = `list-catalog=${encodeURIComponent(bf.listCatalog)}&catalog=${encodeURIComponent(bf.catalog)}&oid=${encodeURIComponent(bf.oid)}`;
+    const htmlOfDetails = await (await fetch(detailsUrl, {
+      method: "POST",
+      headers:
+        { "Content-Type": "application/x-www-form-urlencoded", },
+      body: body,
+    })).text();
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(htmlOfDetails, 'text/html');
+    let details = await handleShpMain(doc);
+    return Promise.resolve(details);
+
+  } catch (e) {
+    console.error("fetching and parsing 'details' page failed! order number: " + bf.orderNumber);
+  }
+
+  return Promise.resolve(null);
 }
 
 /**
  * @param {YhParseContext} context
  * @returns
  */
-function writeOneLine(context) {
-  if (context.writeOneOrder) {
-    context.writeOneOrder(context);
-  }
-}
+// function writeOneLine(context) {
+//   if (context.writeLines) {
+//     context.writeLines(context);
+//   }
+// }
 
 /**
  * @param {YhParseContext} context
@@ -186,16 +240,16 @@ async function handleElNext(context, d) {
         const html = await (await fetch(href)).text();
         const parser = new DOMParser();
         const doc = parser.parseFromString(html, 'text/html');
-        await handleDocument(context, doc);
+        const result = await handleDocument(context, doc);
         console.log("parsing next page is done!");
-        return Promise.resolve(true);
+        return Promise.resolve(result);
       } catch (e) {
         console.error("hy extension: while fetching and parsing the next page, error happened : " + JSON.stringify(e));
         return Promise.resolve(false);
       }
     }
   }
-  return Promise.resolve(false);
+  return Promise.resolve(true);
 }
 
 /**
@@ -208,13 +262,15 @@ async function handleDocument(context, d) {
   const ordHistory = d.querySelector('#ordhist');
   // `d.querySelector` may return null if the selector doesn't match anything.
   if (ordHistory) {
-    handleOrderItem(context, ordHistory);
-    await handleElNext(context, d);
+    let result = await handleOrderItem(context, ordHistory);
+    if (!debugStopNextPage && result) {
+      result = await handleElNext(context, d);
+    }
+    return Promise.resolve(result);
   } else {
     console.error("hy extension: no #ordhist Element in the document");
     return Promise.resolve(false);
   }
-  return Promise.resolve(true);
 }
 
 
@@ -235,7 +291,7 @@ class UIFactory {
     }
   }
 
-  appendOutputBox() {
+  appendOutputBox(onClose) {
     const d = document;
     let divDlg = d.createElement("div");
     divDlg.id = idForDialog;
@@ -254,7 +310,8 @@ class UIFactory {
     taOutput.rows = 24;
     taOutput.addEventListener("keypress", (e) => {
       if (e.code === 27) {
-        this.showOutputBox(false)
+        this.showOutputBox(false);
+        onClose();
       }
     });
 
@@ -264,6 +321,7 @@ class UIFactory {
     let ui = this;
     closeBtn.addEventListener("click", () => {
       ui.showOutputBox(false);
+      onClose();
     })
 
     divDlg.appendChild(closeBtn);
@@ -313,7 +371,7 @@ function downloadCsv(csvData) {
   elAnchor.href = URL.createObjectURL(blob);
   elAnchor.download = 'order-history.csv';
   elAnchor.click();
-  
+
   URL.revokeObjectURL(elAnchor.href);
   document.body.removeChild(elAnchor);
 }
@@ -322,17 +380,36 @@ const ui = new UIFactory();
 
 
 function pageMainForList() {
-  check1();
-  
+
+  /** @type {YhParseContext} */
+  let ctx = {
+    processing: true,
+  }
+
   const runButton = ui.appendRunButton();
   runButton.addEventListener("click", () => {
 
-    let csvData = "日付,商品名,価格,ステータス,URL,ストア名,注文番号\n"; // csv header
+    let csvData = "日付,注文番号,商品名,付帯情報,価格,個数,状態,請求先,商品URL,ストア情報\n"; // csv header
 
-    /** @type {YhParseContext} */
-    let ctx = {
-      writeOneOrder: (ctx) => {
-        let line = `"${ctx.date}", "${ctx.productInfo.title}", "${ctx.productInfo.price}", "${ctx.currentStatus}", "${ctx.productInfo.url}", "${ctx.storeName}", "${ctx.orderNumber}"\n`;
+
+    ctx.processing = true;
+    ctx.writeLines = (ctx) => {
+
+      let line = "";
+      for (let item of ctx.details.orderList) {
+
+        line = `"${ctx.date}",`;
+        line += `"${ctx.orderNumber}",`;
+        line += `"${item.name}",`;
+        line += `"${item.shipData}",`;
+        line += `"${item.price}",`;
+        line += `"${item.num}",`;
+        line += `"${ctx.currentStatus}",`;
+        line += `"${ctx.details.billName}",`;
+        line += `"${item.productUrl}",`;
+        line += `"${ctx.storeName}"`;
+        line += `\n`;
+
         ui.writeToOutputBox(line);
         csvData = csvData + line;
       }
@@ -340,13 +417,19 @@ function pageMainForList() {
 
     ui.clearOutputBox();
     ui.showOutputBox(true);
-    handleDocument(ctx, document).then(() => {
-      console.log("all done!");
-      downloadCsv(csvData);
+    handleDocument(ctx, document).then((result) => {
+      if (result) {
+        console.log("all done!");
+        downloadCsv(csvData);  
+      } else {
+        console.warn("csv file is not generated due to result false returned.");
+      }
     })
   })
 
-  ui.appendOutputBox();
+  ui.appendOutputBox(() => {
+    ctx.processing = false;
+  });
 }
 
 

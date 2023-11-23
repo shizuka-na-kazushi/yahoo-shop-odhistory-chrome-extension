@@ -49,3 +49,30 @@ function getAnchorInfo(anchor) {
 
   return info;
 }
+
+/**
+ * @typedef yhInputInfo
+ * @property {string} name
+ * @property {string} value
+ */
+/**
+ * 
+ * @param {HTMLFormElement} form 
+ * @returns {yhInputInfo[]}
+ */
+function getInputInfos(form) {
+  const elInputs = form.getElementsByTagName("input");
+  if (!elInputs) {
+    return[];
+  }
+ 
+  /** @type {yhInputInfo[]} */
+  let ret = [];
+  for (let i = 0; i < elInputs.length; i++) {
+    /** @type {HTMLInputElement} */
+    const input = elInputs[i];
+    ret.push({value: input.value, name: input.name});
+  }
+
+  return ret;
+}
