@@ -1,0 +1,4 @@
+*.pem
+*.crx
+*.psd
+.DS_Store

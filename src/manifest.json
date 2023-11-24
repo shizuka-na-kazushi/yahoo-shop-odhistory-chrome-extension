@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Y! shopping order history",
-  "version": "1.0",
-  "description": "get order list from Yahoo Shopping site as cvs",
+  "name": "Yahooショッピング　注文履歴CSV",
+  "version": "0.1",
+  "description": "Yahooショッピングの「注文履歴」画面からCSVファイルをダウンロードするためのボタンを追加する拡張機能です",
 
   "icons": {
     "16": "images/icon-16.png",
@@ -14,6 +14,7 @@
     {
       "js": [
         "scripts/utils.js",
+        "scripts/app-ui.js",
         "scripts/page-list.js",
         "scripts/page-details.js",
         "scripts/main.js"

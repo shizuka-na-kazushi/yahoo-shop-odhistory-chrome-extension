@@ -1,7 +1,4 @@
 
-const idForOutputBox = "yh-extension-output-box";
-const idForDialog = "hy-extension-dialog";
-const zIndexForDialog = 999;
 const callingNextPageInterval = 300; // in millisecond
 const callingDetailsPageInterval = 150; // in millisecond
 
@@ -15,11 +12,26 @@ const detailsUrl = "https://odhistory.shopping.yahoo.co.jp/order-history/details
  * @returns 
  */
 
+/**  
+ * @callback YhProgressCallback
+ * @param {number} percent (0 - 100)
+ * @param {number} totalCount
+ * @param {number} currentCount
+ * @returns 
+ */
+
+
 /**
  * @typedef YhDetailButtonForm
  * @property {string} listCatalog
  * @property {string} catalog
  * @property {string} oid
+ */
+
+/**
+ * @typedef YhProgressInfo
+ * @property {string} totalCount
+ * @property {string} processingOrderCount
  */
 
 /**
@@ -31,7 +43,9 @@ const detailsUrl = "https://odhistory.shopping.yahoo.co.jp/order-history/details
  * @property {YhDetailButtonForm} buttonForm
  * @property {yhDetails} details
  * @property {YhWriteLinesCallback} writeLines
+ * @property {YhProgressCallback} onProgress
  * @property {boolean} processing
+ * @property {YhProgressInfo} progressInfo
  */
 
 
@@ -146,12 +160,24 @@ async function handleItems(context, elOrderItem) {
   for (let i = 0; i < elItems.length && result; i++) {
     const elItemList = elItems[i].getElementsByClassName("elItemList");
     for (let x = 0; x < elItemList.length && result; x++) {
+
+      context.progressInfo && context.progressInfo.processingOrderCount++;
+
       handleCurrentStatus(context, elItemList[x]);
       handleStoreInfo(context, elItemList[x]);
       handleOrderNumber(context, elItemList[x]);
       handleControl(context, elItemList[x]);
       context.details = await fetchDetails(context.buttonForm);
       context.writeLines(context);
+
+      if (context.progressInfo) {
+        const percent = parseInt((context.progressInfo.processingOrderCount / context.progressInfo.totalCount) * 100);
+        console.log(`progress: ${context.progressInfo.processingOrderCount} / ${context.progressInfo.totalCount}`);
+        if (context.onProgress) {
+          context.onProgress(percent, context.progressInfo.totalCount, context.progressInfo.processingOrderCount);
+        }
+      }
+
       if (!context.processing) {
         result = false;
         console.warn("process aborted, while fetchDetails()!");
@@ -255,14 +281,48 @@ async function handleElNext(context, d) {
 /**
  * 
  * @param {YhParseContext} context 
+ * @param {Document} d 
+ */
+function handleMdOrderFilter(context, d) {
+
+  if ("progressInfo" in context) {
+    // If progressInfo is already available in context, 
+    // it may be created as result of parsing and setting in the first page.
+    // Let's skip parsing below...
+    return;
+  }
+
+  const mdOrderFilter = d.getElementById("ordsea");
+  const elCounts = mdOrderFilter.getElementsByClassName("elCount");
+  if (!elCounts || elCounts.length <= 0) {
+    return;
+  }
+
+  const total = parseInt(elCounts[0].innerText);
+  context.progressInfo = { totalCount: total, processingOrderCount: 0 };
+}
+
+/**
+ * 
+ * @param {YhParseContext} context 
  * @param {Document} d
  * @return {Promise<boolean>}
  */
 async function handleDocument(context, d) {
+
+  handleMdOrderFilter(context, d);
+
   const ordHistory = d.querySelector('#ordhist');
   // `d.querySelector` may return null if the selector doesn't match anything.
   if (ordHistory) {
+
+    // making progress with looking total order count
+    handleMdOrderFilter(context, ordHistory);
+
+    // let's parse orders
     let result = await handleOrderItem(context, ordHistory);
+
+    // go next page! it may make call for handleDocument() recursively with the next page Document
     if (!debugStopNextPage && result) {
       result = await handleElNext(context, d);
     }
@@ -276,123 +336,91 @@ async function handleDocument(context, d) {
 
 
 class UIFactory {
+
+  /** @type {UiDialog} */
+  dialog;
+
+  constructor() {
+    this.dialog = new UiDialog(document, document.body);
+    this.appendOpenButton();
+  }
+
   /**
    * 
    */
-  appendRunButton() {
+  appendOpenButton() {
     const d = document;
     let shpMain = d.getElementById("shpHeader");
     if (shpMain) {
       let elButton = d.createElement("button");
-      elButton.innerText = "ダウンロードCSVファイル";
+      elButton.innerText = "CSVファイルの取得";
       elButton.setAttribute("style", "margin: 10px 10px 10px 10px");
+      elButton.addEventListener("click", () => {
+        this.dialog.show();
+      })
       shpMain.appendChild(elButton);
       return elButton;
     }
   }
 
-  appendOutputBox(onClose) {
-    const d = document;
-    let divDlg = d.createElement("div");
-    divDlg.id = idForDialog;
-    divDlg.setAttribute("style",
-      `z-index: ${zIndexForDialog}; position:absolute; top: 0px; left: 0px; 
-      display:none;
-      background: lightgray;
-      `);
-    d.body.appendChild(divDlg);
-
-    /** text area */
-    let taOutput = d.createElement("textarea");
-    taOutput.id = idForOutputBox;
-    taOutput.readOnly = true;
-    taOutput.cols = 120;
-    taOutput.rows = 24;
-    taOutput.addEventListener("keypress", (e) => {
-      if (e.code === 27) {
-        this.showOutputBox(false);
-        onClose();
-      }
-    });
-
-    /** close button */
-    let closeBtn = d.createElement("button");
-    closeBtn.innerText = "閉じる";
-    let ui = this;
-    closeBtn.addEventListener("click", () => {
-      ui.showOutputBox(false);
-      onClose();
-    })
-
-    divDlg.appendChild(closeBtn);
-    divDlg.appendChild(taOutput);
+  /**
+   * 
+   * @param {() => void} callback 
+   */
+  addStartListener(callback) {
+    this.dialog.startButton.el.addEventListener("click", callback);
   }
 
-  showOutputBox(enable) {
-    let divDlg = document.getElementById(idForDialog);
-    if (divDlg) {
-      divDlg.style.display = enable ? "block" : "none";
-    }
+  /**
+   * 
+   * @param {() => void} callback 
+   */
+  addOnCloseListener(callback) {
+    this.dialog.onClose = callback;
   }
 
-  writeToOutputBox(str) {
-    let taOutput = document.getElementById(idForOutputBox);
-    taOutput.value = taOutput.value + str;
+  /**
+   * 
+   * @param {string} msg 
+   */
+  displayMessage(msg) {
+    this.dialog.message.setText(msg);
   }
-
-  clearOutputBox() {
-    document.getElementById(idForOutputBox).value = "";
-  }
-
 };
 
 /**
- * 
- * @param {number} millisecond 
- * @returns {Promise<>}
+ * check if showing page is the first page of list
+ * if pagination is needed, second or upper page does not require 'csv file ' start button
  */
-async function waitForSometime(millisecond) {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve()
-    }, millisecond);
-  })
+function isFirstListPage() {
+  const params = (new URL(location.href)).searchParams;
+  const firstorder = params.get("firstorder");
+  const type = params.get("type");
+  return (!firstorder || firstorder == "1") && !type;
 }
-
-/**
- * 
- * @param {string} cvsData 
- */
-function downloadCsv(csvData) {
-  const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8' });
-  let elAnchor = document.createElement('a');
-  document.body.appendChild(elAnchor);
-
-  elAnchor.href = URL.createObjectURL(blob);
-  elAnchor.download = 'order-history.csv';
-  elAnchor.click();
-
-  URL.revokeObjectURL(elAnchor.href);
-  document.body.removeChild(elAnchor);
-}
-
-const ui = new UIFactory();
-
 
 function pageMainForList() {
 
-  /** @type {YhParseContext} */
-  let ctx = {
-    processing: true,
+  if (!isFirstListPage()) {
+    return;
   }
 
-  const runButton = ui.appendRunButton();
-  runButton.addEventListener("click", () => {
+  const ui = new UIFactory();
+
+  ui.addStartListener(() => {
+    ui.dialog.message.setText(`データ取得中: ...`);
 
     let csvData = "日付,注文番号,商品名,付帯情報,価格,個数,状態,請求先,商品URL,ストア情報\n"; // csv header
 
+    /** @type {YhParseContext} */
+    let ctx = {
+      processing: true,
+    }
 
+    // 実行中
     ctx.processing = true;
+
+    // １オーダー毎の出力（フォーマット）
     ctx.writeLines = (ctx) => {
 
       let line = "";
@@ -410,26 +438,35 @@ function pageMainForList() {
         line += `"${ctx.storeName}"`;
         line += `\n`;
 
-        ui.writeToOutputBox(line);
         csvData = csvData + line;
       }
     };
 
-    ui.clearOutputBox();
-    ui.showOutputBox(true);
+    // 更新情報
+    ctx.onProgress = (percent, totalCount, currentCount) => {
+      ui.dialog.progressBar.setProgress(percent);
+      ui.dialog.message.setText(`データ取得中: ${currentCount} / ${totalCount}`);
+    }
+
+    // dialog を閉じたときの処理
+    ui.addOnCloseListener(() => {
+      ctx.processing = false;
+    });
+
+    // 実行
     handleDocument(ctx, document).then((result) => {
       if (result) {
+        ui.dialog.progressBar.setProgress(100);
         console.log("all done!");
-        downloadCsv(csvData);  
+        downloadCsv(csvData, 'order-history.csv');
+        ui.dialog.close();
       } else {
         console.warn("csv file is not generated due to result false returned.");
+        ui.dialog.close();
       }
     })
   })
 
-  ui.appendOutputBox(() => {
-    ctx.processing = false;
-  });
 }
 
 

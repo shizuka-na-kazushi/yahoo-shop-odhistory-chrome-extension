@@ -76,3 +76,34 @@ function getInputInfos(form) {
 
   return ret;
 }
+
+/**
+ * 
+ * @param {number} millisecond 
+ * @returns {Promise<>}
+ */
+async function waitForSometime(millisecond) {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve()
+    }, millisecond);
+  })
+}
+
+/**
+ * 
+ * @param {string} cvsData 
+ * @param {string} filename
+ */
+function downloadCsv(csvData, filename) {
+  const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8' });
+  let elAnchor = document.createElement('a');
+  document.body.appendChild(elAnchor);
+
+  elAnchor.href = URL.createObjectURL(blob);
+  elAnchor.download = filename;
+  elAnchor.click();
+
+  URL.revokeObjectURL(elAnchor.href);
+  document.body.removeChild(elAnchor);
+}

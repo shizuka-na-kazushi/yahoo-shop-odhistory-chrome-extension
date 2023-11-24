@@ -1,3 +1,4 @@
+const debugEnableRunButton = false;
 
 /**
  * @typedef yhDetails
@@ -251,7 +252,9 @@ function createCheckButton() {
 }
 
 function pageMainForDetails() {
-  createCheckButton();
+  if (debugEnableRunButton) {
+    createCheckButton();
+  }
 }
 
 
