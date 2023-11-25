@@ -23,6 +23,15 @@ https://odhistory.shopping.yahoo.co.jp/order-history/list
 CSVファイルとして取り出したい条件（例えば、何年のデータか？）を決めてリストを表示します。その状態で、このボタンを押します。
 しばらくすると、ダウンロードが開始され、ファイルに保存ダイアログが表示されますのでローカルディスクに保存して下さい。
 
+# スクリーンショット
+
+![注文履歴ページ](https://github.com/shizuka-na-kazushi/yahoo-shop-odhistory-chrome-extension/blob/main/webstore/Yahoo%20shopping%20extension%20webstore%20page%201.png?raw=true)
+
+![データ取得中](https://github.com/shizuka-na-kazushi/yahoo-shop-odhistory-chrome-extension/blob/main/webstore/Yahoo%20shopping%20extension%20webstore%20page%202.png?raw=true)
+
+# 実演動画
+[![](https://img.youtube.com/vi/w84wqTLn55Y/0.jpg)](https://www.youtube.com/watch?v=w84wqTLn55Y)
+
 
 # 注意
 Chrome ブラウザで使って下さい。
