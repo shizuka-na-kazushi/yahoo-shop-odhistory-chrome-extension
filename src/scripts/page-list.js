@@ -35,6 +35,11 @@ const detailsUrl = "https://odhistory.shopping.yahoo.co.jp/order-history/details
  */
 
 /**
+ * @typedef YhConfig
+ * @property enablePostage
+ */
+
+/**
  * @typedef YhParseContext
  * @property {string} date
  * @property {string} storeName
@@ -46,6 +51,7 @@ const detailsUrl = "https://odhistory.shopping.yahoo.co.jp/order-history/details
  * @property {YhProgressCallback} onProgress
  * @property {boolean} processing
  * @property {YhProgressInfo} progressInfo
+ * @property {YhConfig} config
  */
 
 
@@ -410,7 +416,7 @@ function pageMainForList() {
   ui.addStartListener(() => {
     ui.dialog.message.setText(`データ取得中: ...`);
 
-    let csvData = "日付,注文番号,商品名,付帯情報,価格,個数,状態,請求先,商品URL,ストア情報\n"; // csv header
+    let csvData = "日付,注文番号,商品名,付帯情報,価格,個数,状態,請求先,商品URL,ストア情報,支払い方法\n"; // csv header
 
     /** @type {YhParseContext} */
     let ctx = {
@@ -435,7 +441,26 @@ function pageMainForList() {
         line += `"${ctx.currentStatus}",`;
         line += `"${ctx.details.billName}",`;
         line += `"${item.productUrl}",`;
-        line += `"${ctx.storeName}"`;
+        line += `"${ctx.storeName}",`;
+        line += `"${ctx.details.payMethod}"`;
+        line += `\n`;
+
+        csvData = csvData + line;
+      }
+
+      // 送料の行を発行
+      if (ctx.config.enablePostage && (0 < ctx.details.postage)) {
+        line = `"${ctx.date}",`;
+        line += `"${ctx.orderNumber}",`;
+        line += `"注文番号: ${ctx.orderNumber} の送料",`;
+        line += `"送料",`;
+        line += `"${ctx.details.postage}",`;
+        line += `"1",`;
+        line += `"${ctx.currentStatus}",`;
+        line += `"${ctx.details.billName}",`;
+        line += `"",`;
+        line += `"${ctx.storeName}",`;
+        line += `"${ctx.details.payMethod}"`;
         line += `\n`;
 
         csvData = csvData + line;
@@ -452,6 +477,8 @@ function pageMainForList() {
     ui.addOnCloseListener(() => {
       ctx.processing = false;
     });
+
+    ctx.config = {enablePostage: ui.dialog.checkboxPostage.getCheck()};
 
     // 実行
     handleDocument(ctx, document).then((result) => {

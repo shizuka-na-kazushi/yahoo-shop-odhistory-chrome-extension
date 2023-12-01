@@ -103,7 +103,7 @@ class UiText {
   constructor(doc, parent, text) {
     this.el = doc.createElement("div");
     this.el.setAttribute("style", `
-      margin: 26px 0 10px 0;
+      margin: 20px 0 0 0;
       padding: 0 10px 0 10px;
       width: 100%;
       height: 30px;
@@ -184,6 +184,55 @@ class UiLoadingIcon {
   }
 }
 
+class UiCheckBox {
+    /** @type {HTMLLabelElement} */
+    label;
+    /** @type {HTMLInputElement} */
+    el;
+
+    constructor(doc, parent, idPrefix, text, checked) {
+
+      const div = doc.createElement("div");
+      div.setAttribute("style", `
+        width: auto;
+        margin: 0 16px 0 16px;
+      `);
+      
+      this.el = doc.createElement("input");
+      this.el.setAttribute("type", "checkbox");
+      this.el.value = idPrefix + "_check";
+      this.el.name = idPrefix + "_check";
+      this.el.id = idPrefix + "_check";
+      this.el.checked = checked;
+
+      this.label = doc.createElement("label");
+      this.label.setAttribute("style", `
+        color: white;
+      `);
+      this.label.htmlFor = this.el.id;
+
+      div.appendChild(this.el);
+      div.appendChild(this.label);
+      this.label.appendChild(doc.createTextNode(text));
+      parent.appendChild(div);
+    }
+
+    /**
+     * 
+     * @param {boolean} checked 
+     */
+    setCheck(checked) {
+      this.el.checked = checked;
+    }
+
+    /**
+     * @return {boolean}
+     */
+    getCheck() {
+      return this.el.checked;
+    }
+}
+
 class UiDialog {
 
   /** @type {Document} */
@@ -205,6 +254,9 @@ class UiDialog {
 
   /** @type {UiText} */
   message;
+
+  /** @type {UiCheckBox} */
+  checkboxPostage;
 
   /** @type {UiButton} */
   startButton;
@@ -331,6 +383,7 @@ class UiDialog {
     this.progressBar = new UiProgressBar(this.doc, this.el, "100%");
 
     this.message = new UiText(this.doc, this.el, this.defaultMessage);
+    this.checkboxPostage = new UiCheckBox(this.doc, this.el, "postage", "「送料」を含める（チェックすると送料行が出力されます）", false);
 
     this.createLoadingIcon();
     this.createControlPanel();

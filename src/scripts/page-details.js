@@ -5,6 +5,8 @@ const debugEnableRunButton = false;
  * @property {string} orderDate
  * @property {string} orderNumber
  * @property {string} billName
+ * @property {string} payMethod
+ * @property {number} postage
  * @property {yhDetailsOrderItem[]} orderList
  * 
  * @typedef yhDetailsOrderItem
@@ -188,6 +190,13 @@ function handleMdOrderAddress(details, shpMain) {
   }
 
   handleBill(details, elBills[0]);
+
+  const elPayMethods = mdOrderDetails[0].getElementsByClassName("elPayMethod");
+  if (!elPayMethods || elPayMethods.length <= 0) {
+    return;
+  }
+
+  handlePayMethod(details, elPayMethods[0]);
 }
 
 /**
@@ -201,6 +210,71 @@ function handleBill(details, elBill) {
     details.billName = el.innerHTML;
   } else {
     details.billName = "";
+  }
+}
+
+/**
+ * 
+ * @param {yhDetails} details 
+ * @param {HTMLElement} elBill 
+ */
+function handlePayMethod(details, elBill) {
+  const el = getFirstChildOfClassElement(elBill, "elInfo");
+  if (!el) {
+    details.payMethod = "";
+    return;
+  }
+
+  let str = el.textContent;
+  str = str.replaceAll(" ", "");
+  str = str.replaceAll("\n", "");
+  details.payMethod = str;
+}
+
+/**
+ * 
+ * @param {yhDetails} details 
+ * @param {HTMLElement} shpMain 
+ * @returns 
+ */
+function handleMdOrderReceipt(details, shpMain) {
+  const mdOrderReceipts = shpMain.getElementsByClassName("mdOrderReceipt");
+  if (!mdOrderReceipts || mdOrderReceipts.length <= 0) {
+    return;
+  }
+
+  handleTotalAmount(details, mdOrderReceipts[0]);
+}
+
+/**
+ * 
+ * @param {yhDetails} details 
+ * @param {HTMLElement} mdOrderReceipt 
+ * @returns 
+ */
+function handleTotalAmount(details, mdOrderReceipt) {
+  details.postage = 0;
+
+  const elTotalAmounts = mdOrderReceipt.getElementsByClassName("elTotalAmount");
+  if (!elTotalAmounts || elTotalAmounts.length <= 0) {
+    return;
+  }
+
+  const elLists = elTotalAmounts[0].getElementsByClassName("elList");
+  if (!elLists || elLists.length <= 0) {
+    return;
+  }
+
+  const elList = elLists[0];
+  for (let i = 0; i < elList.children.length; i++) {
+    let strText = (elList.children[i]).innerText;
+    if (0 <= strText.indexOf("送料")) {
+      strText = strText.replace("送料", "");
+      strText = strText.replace("円", "");
+      strText = strText.replaceAll(",", "");
+      details.postage = parseInt(strText);
+      break;
+    }
   }
 }
 
@@ -222,6 +296,7 @@ function handleShpMain(d) {
   handleMdOrderNumber(details, d);
   handleMdOrderItem(details, d);
   handleMdOrderAddress(details, d);
+  handleMdOrderReceipt(details, d);
 
   return details;
 }
