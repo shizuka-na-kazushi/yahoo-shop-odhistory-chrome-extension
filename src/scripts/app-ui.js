@@ -2,6 +2,8 @@
 const idForDialog = "hy-extension-dialog";
 const zIndexForDialog = 999;
 
+const getStorage = () => chrome.storage.local;
+
 class UiProgressBar {
 
   /** @type {Document} */
@@ -185,52 +187,188 @@ class UiLoadingIcon {
 }
 
 class UiCheckBox {
-    /** @type {HTMLLabelElement} */
-    label;
-    /** @type {HTMLInputElement} */
-    el;
+  /** @type {HTMLLabelElement} */
+  label;
+  /** @type {HTMLInputElement} */
+  el;
 
-    constructor(doc, parent, idPrefix, text, checked) {
+  constructor(doc, el, label) {
+    this.label = label;
+    this.el = el;
+  }
 
-      const div = doc.createElement("div");
-      div.setAttribute("style", `
-        width: auto;
-        margin: 0 16px 0 16px;
-      `);
+  /**
+   * 
+   * @param {boolean} checked 
+   */
+  setCheck(checked) {
+    this.el.checked = checked;
+  }
+
+  /**
+   * @return {boolean}
+   */
+  getCheck() {
+    return this.el.checked;
+  }
+
+  /**
+   * @param {boolean} disabled
+   */
+  setDisabled(disabled) {
+    this.el.disabled = disabled;
+    this.label.style.color = disabled ? "gray" : "white";
+  }
+}
+
+class UiPreference {
+
+  /** @type {Document} */
+  doc;
+
+  /** @type {HTMLFormElement} */
+  form;
+
+  /** @type {UiCheckBox} */
+  checkboxPostage;
+
+  /** @type {"per-order" | "per-product"} */
+  type = "per-product"
+
+  /**
+   * 
+   * @param {*} doc 
+   * @param {*} parent 
+   * @param {*} prefix 
+   * @param { [{label: string}] } options 
+   */
+  constructor(doc, parent) {
+    this.doc = doc;
+
+    const strHtml = `
+    <form id="pref_options_form" >
+      <div style="width: auto; margin: 0 16px 0 16px;" >
+        <input type="radio" id="ysox_radio_1" value="ysox_radio_1" name="pref_options" />
+        <label for="ysox_radio_1" style="color:white"> 「購入品目」優先: (購入品目ごとに行を出力) </label>
+
+        <br />
+        <div style="width: auto; margin: 0 16px 2px 16px" >
+          <input type="checkbox" id="ysox_output_postage" name="ysox_output_postage" value="ysox_output_postage">
+          <label for="ysox_output_postage" style="color:white"> 「送料」を行として出力する</label>
+        </div>
+
+        <br />
       
-      this.el = doc.createElement("input");
-      this.el.setAttribute("type", "checkbox");
-      this.el.value = idPrefix + "_check";
-      this.el.name = idPrefix + "_check";
-      this.el.id = idPrefix + "_check";
-      this.el.checked = checked;
+        <input type="radio" id="ysox_radio_2" value="ysox_radio_2" name="pref_options"/>
+        <label for="ysox_radio_2" style="color:white"> 「合計金額(税込)」優先: (決済ごとに行を出力) </label>
 
-      this.label = doc.createElement("label");
-      this.label.setAttribute("style", `
-        color: white;
-      `);
-      this.label.htmlFor = this.el.id;
+      </div>
+    </form>
+    `;
 
-      div.appendChild(this.el);
-      div.appendChild(this.label);
-      this.label.appendChild(doc.createTextNode(text));
-      parent.appendChild(div);
+    const el = doc.createElement("div");
+    el.innerHTML = strHtml;
+    parent.appendChild(el);
+
+    this._setupCheckbox(doc);
+    this._setupForm(doc);
+    this._restorePreference(() => { this._updateUi() });
+  }
+
+  /**
+   * 
+   * @param {Document} doc 
+   */
+  _setupCheckbox(doc) {
+    const elCheckbox = doc.getElementById("ysox_output_postage");
+    const elLabel = doc.querySelector('label[for="ysox_output_postage"]');
+
+    this.checkboxPostage = new UiCheckBox(doc, elCheckbox, elLabel);
+  }
+
+  /**
+   * 
+   * @param {Document} doc 
+   */
+  _setupForm(doc) {
+    this.form = doc.getElementById("pref_options_form");
+    this.form.addEventListener("change", () => {
+      const selectedOption = this.form.querySelector(`input[name="pref_options"]:checked`);
+      if (selectedOption.id == "ysox_radio_1") {
+        // alert("ysox_radio_1 was selected");
+        this.type = "per-product";
+        this.checkboxPostage.setDisabled(false);
+      } else {
+        this.type = "per-order";
+        this.checkboxPostage.setDisabled(true);
+      }
+    })
+  }
+
+  /**
+   * 
+   */
+  _updateUi() {
+    const doc = this.doc;
+    if (this.type === "per-product") {
+      doc.getElementById("ysox_radio_1").checked = true;
+      this.checkboxPostage.setDisabled(false);
+    } else if (this.type === "per-order") {
+      doc.getElementById("ysox_radio_2").checked = true;
+      this.checkboxPostage.setDisabled(true);
     }
+  }
 
-    /**
-     * 
-     * @param {boolean} checked 
-     */
-    setCheck(checked) {
-      this.el.checked = checked;
+  /**
+   * 
+   * @param {boolean} disabled 
+   */
+  setDisabled(disabled) {
+    const doc = this.doc;
+    doc.getElementById("ysox_radio_1").disabled = disabled;
+    doc.getElementById("ysox_radio_2").disabled = disabled;
+    doc.querySelector('label[for="ysox_radio_1"]').style.color = disabled ? "gray" : "white";
+    doc.querySelector('label[for="ysox_radio_2"]').style.color = disabled ? "gray" : "white";
+    if (disabled) {
+      this.checkboxPostage.setDisabled(true);
+    } else {
+      this._updateUi();
     }
+  }
 
-    /**
-     * @return {boolean}
-     */
-    getCheck() {
-      return this.el.checked;
+  /**
+   * 
+   */
+  storePreference() {
+    try {
+      const storage = getStorage();
+      storage.set({
+        preference: {
+          type: this.type,
+          checkPostage: this.checkboxPostage.getCheck(),
+        }
+      })
+    } catch (e) {
+      console.warn("storePreference: " + e);
     }
+  }
+
+  _restorePreference(callback) {
+    try {
+      const storage = getStorage();
+      storage.get(["preference"]).then((value) => {
+        if (value.preference) {
+          this.type = value.preference.type;
+          this.checkboxPostage.setCheck(value.preference.checkPostage);
+        }
+        callback();
+      })
+    } catch (e) {
+      console.warn("_restorePreference: " + e);
+      callback();
+    }
+  }
+
 }
 
 class UiDialog {
@@ -255,8 +393,8 @@ class UiDialog {
   /** @type {UiText} */
   message;
 
-  /** @type {UiCheckBox} */
-  checkboxPostage;
+  /** @type {UiPreference} */
+  preference;
 
   /** @type {UiButton} */
   startButton;
@@ -310,7 +448,7 @@ class UiDialog {
     this.el = this.doc.createElement("div");
     this.el.setAttribute("style", `
       width: 450px;
-      height: 180px;
+      height: 240px;
       z-index: ${zIndexForDialog}; 
       position:fixed;
       top: 50%; 
@@ -340,6 +478,8 @@ class UiDialog {
     this.startButton.el.addEventListener("click", () => {
       this.loading.setEnable(true);
       this.startButton.setEnable(false);
+      this.preference.setDisabled(true);
+      this.preference.storePreference();
     });
 
     this.cancelButton = new UiButton(this.doc, this.controlPanel, "キャンセル");
@@ -383,8 +523,9 @@ class UiDialog {
     this.progressBar = new UiProgressBar(this.doc, this.el, "100%");
 
     this.message = new UiText(this.doc, this.el, this.defaultMessage);
-    this.checkboxPostage = new UiCheckBox(this.doc, this.el, "postage", "「送料」を含める（チェックすると送料行が出力されます）", false);
 
+    this.preference = new UiPreference(this.doc, this.el);
+    
     this.createLoadingIcon();
     this.createControlPanel();
   }
@@ -395,6 +536,7 @@ class UiDialog {
     this.onClose && this.onClose();
     this.loading.setEnable(false);
     this.startButton.setEnable(true);
+    this.preference.setDisabled(false);
   }
 
   show() {

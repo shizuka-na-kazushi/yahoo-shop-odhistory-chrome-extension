@@ -6,7 +6,10 @@ const debugEnableRunButton = false;
  * @property {string} orderNumber
  * @property {string} billName
  * @property {string} payMethod
+ * @property {string} subtotal
  * @property {number} postage
+ * @property {number} commission
+ * @property {number} sum
  * @property {yhDetailsOrderItem[]} orderList
  * 
  * @typedef yhDetailsOrderItem
@@ -17,6 +20,18 @@ const debugEnableRunButton = false;
  * @property {string} shipData
  */
 
+
+/**
+ * 
+ * @param {string} str ex. "123,456,789円"
+ * @returns {number}  ex. 123456789 
+ */
+function priceStrToInt(str) {
+  let price = str;
+  price = price.replace("円", "");
+  price = price.replaceAll(",", "");
+  return parseInt(price);
+}
 
 /**
  * 
@@ -145,11 +160,7 @@ function handleMdOrderDetailInfo(item, elDetail) {
 
   const elPrices = elInfos[0].getElementsByClassName("elPrice");
   if (elPrices && 0 < elPrices.length) {
-    /** @type {string} price */
-    let price = elPrices[0].innerHTML;
-    price = price.replace("円", "");
-    price = price.replaceAll(",", "");
-    item.price = parseInt(price);
+    item.price = priceStrToInt(elPrices[0].innerHTML);
   } else {
     item.price = 0;
   }
@@ -253,7 +264,10 @@ function handleMdOrderReceipt(details, shpMain) {
  * @returns 
  */
 function handleTotalAmount(details, mdOrderReceipt) {
+  details.subtotal = 0;
   details.postage = 0;
+  details.commission = 0;
+  details.sum = 0;
 
   const elTotalAmounts = mdOrderReceipt.getElementsByClassName("elTotalAmount");
   if (!elTotalAmounts || elTotalAmounts.length <= 0) {
@@ -266,17 +280,84 @@ function handleTotalAmount(details, mdOrderReceipt) {
   }
 
   const elList = elLists[0];
+  // searching "商品合計(xx)" <li> element in <li> list 
+  // <li><dl>   <dt>商品合計</dt> <dd>〇,〇円</dd>   </dl></li>
   for (let i = 0; i < elList.children.length; i++) {
     let strText = (elList.children[i]).innerText;
-    if (0 <= strText.indexOf("送料")) {
-      strText = strText.replace("送料", "");
-      strText = strText.replace("円", "");
-      strText = strText.replaceAll(",", "");
-      details.postage = parseInt(strText);
-      break;
+    if (0 <= strText.indexOf("商品合計")) {
+      handleSubtotal(details, elList.children[i]);
+    } else if (0 <= strText.indexOf("送料")) {
+      handlePostage(details, elList.children[i]);
+    } else if (0 <= strText.indexOf("手数料")) {
+      handleCommission(details, elList.children[i]);
     }
   }
+  
+  handleElSum(details, elList);
 }
+
+/**
+ * 
+ * @param {yhDetails} details 
+ * @param {HTMLElement} elLi 
+ */
+function handleSubtotal(details, elLi) {
+  const elSubtotalData = elLi.getElementsByTagName("dd");
+  if (!elSubtotalData || elSubtotalData.length <= 0) {
+    return;
+  }
+  details.subtotal = priceStrToInt(elSubtotalData[0].innerText); 
+}
+
+/**
+ * 
+ * @param {yhDetails} details 
+ * @param {HTMLElement} elLi 
+ */
+function handlePostage(details, elLi) {
+  const elPostages = elLi.getElementsByTagName("dd");
+  if (!elPostages || elPostages.length <= 0) {
+    return;
+  }
+  details.postage = priceStrToInt(elPostages[0].innerText); 
+}
+
+/**
+ * 
+ * @param {yhDetails} details 
+ * @param {HTMLElement} elLi 
+ */
+function handleCommission(details, elLi) {
+  const elCommissions = elLi.getElementsByTagName("dd");
+  if (!elCommissions || elCommissions.length <= 0) {
+    return;
+  }
+  details.commission = priceStrToInt(elCommissions[0].innerText);
+}
+
+/**
+ * 
+ * @param {yhDetails} details 
+ * @param {HTMLElement} elList 
+ */
+function handleElSum(details, elList) {
+  // <li class="elSum"><dl>  <dt>合計金額(税込)</dt> <dd>〇,〇円</dd>  </dl></li>
+
+  const elSums = elList.getElementsByClassName("elSum");
+  if (!elSums || elSums.length <= 0) {
+    return;
+  }
+
+  const elSum = elSums[0];
+  const elSumData = elSum.getElementsByTagName("dd");
+  if (!elSumData || elSumData.length <= 0) {
+    return;
+  }
+
+  details.sum = priceStrToInt(elSumData[0].innerText);
+}
+
+
 
 /**
  * 

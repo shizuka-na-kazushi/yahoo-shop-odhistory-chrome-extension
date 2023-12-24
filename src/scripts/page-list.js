@@ -20,6 +20,10 @@ const detailsUrl = "https://odhistory.shopping.yahoo.co.jp/order-history/details
  * @returns 
  */
 
+/**
+ * @callback YhErrorCallback
+ * @param {Error} e
+ */
 
 /**
  * @typedef YhDetailButtonForm
@@ -36,7 +40,8 @@ const detailsUrl = "https://odhistory.shopping.yahoo.co.jp/order-history/details
 
 /**
  * @typedef YhConfig
- * @property enablePostage
+ * @property {"per-product"|"per-order"} csvType
+ * @property {boolean} enablePostage
  */
 
 /**
@@ -49,9 +54,11 @@ const detailsUrl = "https://odhistory.shopping.yahoo.co.jp/order-history/details
  * @property {yhDetails} details
  * @property {YhWriteLinesCallback} writeLines
  * @property {YhProgressCallback} onProgress
+ * @property {YhErrorCallback} onError
  * @property {boolean} processing
  * @property {YhProgressInfo} progressInfo
  * @property {YhConfig} config
+ * @property {string} csvData
  */
 
 
@@ -174,19 +181,24 @@ async function handleItems(context, elOrderItem) {
       handleOrderNumber(context, elItemList[x]);
       handleControl(context, elItemList[x]);
       context.details = await fetchDetails(context.buttonForm);
-      context.writeLines(context);
+      if (!context.details && context.onError) {
+        context.onError(new Error("注文情報が取得できない"));
+      } else {
 
-      if (context.progressInfo) {
-        const percent = parseInt((context.progressInfo.processingOrderCount / context.progressInfo.totalCount) * 100);
-        console.log(`progress: ${context.progressInfo.processingOrderCount} / ${context.progressInfo.totalCount}`);
-        if (context.onProgress) {
-          context.onProgress(percent, context.progressInfo.totalCount, context.progressInfo.processingOrderCount);
+        context.writeLines(context);
+      
+        if (context.progressInfo) {
+          const percent = parseInt((context.progressInfo.processingOrderCount / context.progressInfo.totalCount) * 100);
+          console.log(`progress: ${context.progressInfo.processingOrderCount} / ${context.progressInfo.totalCount}`);
+          if (context.onProgress) {
+            context.onProgress(percent, context.progressInfo.totalCount, context.progressInfo.processingOrderCount);
+          }
         }
       }
 
       if (!context.processing) {
         result = false;
-        console.warn("process aborted, while fetchDetails()!");
+        console.log("process aborted, while fetchDetails()!");
       }
     }
   }
@@ -416,56 +428,22 @@ function pageMainForList() {
   ui.addStartListener(() => {
     ui.dialog.message.setText(`データ取得中: ...`);
 
-    let csvData = "日付,注文番号,商品名,付帯情報,価格,個数,状態,請求先,商品URL,ストア情報,支払い方法\n"; // csv header
-
     /** @type {YhParseContext} */
     let ctx = {
       processing: true,
+      config: {
+        csvType: ui.dialog.preference.type,
+        enablePostage: ui.dialog.preference.checkboxPostage.getCheck()
+      },
+      csvData: "",
     }
-
-    // 実行中
-    ctx.processing = true;
-
-    // １オーダー毎の出力（フォーマット）
-    ctx.writeLines = (ctx) => {
-
-      let line = "";
-      for (let item of ctx.details.orderList) {
-
-        line = `"${ctx.date}",`;
-        line += `"${ctx.orderNumber}",`;
-        line += `"${item.name}",`;
-        line += `"${item.shipData}",`;
-        line += `"${item.price}",`;
-        line += `"${item.num}",`;
-        line += `"${ctx.currentStatus}",`;
-        line += `"${ctx.details.billName}",`;
-        line += `"${item.productUrl}",`;
-        line += `"${ctx.storeName}",`;
-        line += `"${ctx.details.payMethod}"`;
-        line += `\n`;
-
-        csvData = csvData + line;
-      }
-
-      // 送料の行を発行
-      if (ctx.config.enablePostage && (0 < ctx.details.postage)) {
-        line = `"${ctx.date}",`;
-        line += `"${ctx.orderNumber}",`;
-        line += `"注文番号: ${ctx.orderNumber} の送料",`;
-        line += `"送料",`;
-        line += `"${ctx.details.postage}",`;
-        line += `"1",`;
-        line += `"${ctx.currentStatus}",`;
-        line += `"${ctx.details.billName}",`;
-        line += `"",`;
-        line += `"${ctx.storeName}",`;
-        line += `"${ctx.details.payMethod}"`;
-        line += `\n`;
-
-        csvData = csvData + line;
-      }
-    };
+    
+    /** set writeLines function to context depended on csv type **/
+    if (ctx.config.csvType === "per-product") {
+      formatCsvPerProduct(ctx);
+    } else if (ctx.config.csvType === "per-order") {
+      formatCsvPerOrder(ctx);
+    }
 
     // 更新情報
     ctx.onProgress = (percent, totalCount, currentCount) => {
@@ -473,22 +451,26 @@ function pageMainForList() {
       ui.dialog.message.setText(`データ取得中: ${currentCount} / ${totalCount}`);
     }
 
+    // エラー情報
+    ctx.onError = (e) => {
+      alert("エラーが発生しました(注文情報が取得できません)。\nブラウザの再読み込みを行い、再度実行して下さい。");
+      ctx.processing = false;
+    }
+
     // dialog を閉じたときの処理
     ui.addOnCloseListener(() => {
       ctx.processing = false;
     });
-
-    ctx.config = {enablePostage: ui.dialog.checkboxPostage.getCheck()};
 
     // 実行
     handleDocument(ctx, document).then((result) => {
       if (result) {
         ui.dialog.progressBar.setProgress(100);
         console.log("all done!");
-        downloadCsv(csvData, 'order-history.csv');
+        downloadCsv(ctx.csvData, 'order-history.csv');
         ui.dialog.close();
       } else {
-        console.warn("csv file is not generated due to result false returned.");
+        console.log("csv file is not generated due to result false returned.");
         ui.dialog.close();
       }
     })
